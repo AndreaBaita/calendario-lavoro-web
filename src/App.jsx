@@ -187,17 +187,29 @@ function AdminPanel({ currentUser, onUserChanged }){
   </section>
 }
 
+function readSession(){
+  const raw = localStorage.getItem(SESSION_KEY)
+  if(!raw) return ''
+  try { return JSON.parse(raw) || '' } catch { return raw || '' }
+}
+
+function emptyForm(){
+  return {site:'', people:'', notes:'', addressStatus:'', lat:'', lon:''}
+}
+
 function App(){
-  const [user,setUser]=useState(()=>loadJson(SESSION_KEY, ''))
+  const [user,setUser]=useState(()=>readSession())
   const [viewDate,setViewDate]=useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [entries,setEntries]=useState(()=> user ? loadEntries(user) : {})
   const [selected,setSelected]=useState(dateKey(today))
-  const [form,setForm]=useState({ site:'', people:'', notes:'', addressStatus:'', lat:'', lon:'' })
+  const [form,setForm]=useState(()=>emptyForm())
+  const [usersVersion,setUsersVersion]=useState(0)
   const [editing,setEditing]=useState(false)
   const [suggestions,setSuggestions]=useState([])
   const [addressLoading,setAddressLoading]=useState(false)
   const [addressMessage,setAddressMessage]=useState('')
 
+  const users = useMemo(()=>getUsers(), [usersVersion])
   const year=viewDate.getFullYear(), month=viewDate.getMonth()
   const holidays = useMemo(()=>italianHolidays(year),[year])
   const selectedHoliday = holidays[selected]
@@ -205,7 +217,10 @@ function App(){
   const selectedWeekend = isWeekend(selectedDate)
   const selectedEntry = entries[selected]
 
-  useEffect(()=>{ if(user) setEntries(loadEntries(user)) },[user])
+  useEffect(()=>{
+    if(user) setEntries(loadEntries(user))
+    else setEntries({})
+  },[user])
 
   useEffect(()=>{
     if(!editing) return
@@ -226,8 +241,32 @@ function App(){
     return ()=>{ clearTimeout(timer); controller.abort() }
   },[form.site, editing])
 
-  if(!user || !getUsers()[user] || getUsers()[user].status !== 'active') return <AuthScreen onLogin={setUser}/>
-  const isAdmin = isAdminUser(user)
+  function handleLogin(username){
+    saveJson(SESSION_KEY, username)
+    setUser(username)
+    setEntries(loadEntries(username))
+    setSelected(dateKey(today))
+    setForm(emptyForm())
+    setEditing(false)
+    setSuggestions([])
+    setAddressMessage('')
+    setUsersVersion(v=>v+1)
+  }
+  function handleLogout(){
+    localStorage.removeItem(SESSION_KEY)
+    setUser('')
+    setEntries({})
+    setSelected(dateKey(today))
+    setForm(emptyForm())
+    setEditing(false)
+    setSuggestions([])
+    setAddressMessage('')
+    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1))
+    setUsersVersion(v=>v+1)
+  }
+
+  if(!user || !users[user] || users[user].status !== 'active') return <AuthScreen onLogin={handleLogin}/>
+  const isAdmin = users[user]?.role === 'admin'
 
   const calendarDays = useMemo(()=>{
     const blanks = Array(firstMondayIndex(year,month)).fill(null)
@@ -257,7 +296,7 @@ function App(){
   function manualAddressChange(value){ setForm({...form, site:value, addressStatus:'', lat:'', lon:''}) }
   function saveDay(){ const next = {...entries, [selected]: { ...form, updatedAt: new Date().toISOString(), user }}; setEntries(next); saveEntries(user,next); setEditing(false); setSuggestions([]) }
   function deleteDay(){ const next={...entries}; delete next[selected]; setEntries(next); saveEntries(user,next); setForm({site:'', people:'', notes:'', addressStatus:'', lat:'', lon:''}); setEditing(true) }
-  function logout(){ localStorage.removeItem(SESSION_KEY); setUser('') }
+  function logout(){ handleLogout() }
   function exportJson(){
     const blob = new Blob([JSON.stringify(entries,null,2)],{type:'application/json'})
     const url = URL.createObjectURL(blob), a = document.createElement('a')
@@ -323,7 +362,7 @@ function App(){
       </section>
 
       <section className="card listCard"><h2>Riepilogo mese</h2>{monthEntries.length===0 ? <p className="muted">Nessuna giornata registrata in questo mese.</p> : <div className="monthList">{monthEntries.map(([k,e])=><button key={k} onClick={()=>openDay(k)} className="row"><span>{parseKey(k).getDate()}</span><div><strong>{e.site || 'Lavoro'}</strong><small>{e.people || 0} persone {e.addressStatus === 'verified' ? '• indirizzo verificato' : ''}</small></div></button>)}</div>}</section>
-      {isAdmin && <AdminPanel currentUser={user} onUserChanged={setUser}/>}
+      {isAdmin && <AdminPanel currentUser={user} onUserChanged={handleLogin}/>}
       <section className="card backupCard"><h2>Backup dati</h2><p className="muted">Backup del calendario dell’utente <strong>{user}</strong>. In questa versione i dati restano nel browser.</p><div className="actions"><button className="smallBtn" onClick={exportJson}><Download size={17}/> Esporta</button><label className="smallBtn fileBtn"><Upload size={17}/> Importa<input type="file" accept="application/json" onChange={importJson}/></label></div></section>
     </main>
   </div>
