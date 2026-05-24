@@ -30,7 +30,7 @@ function App(){
   const [session,setSession]=useState(null); const [profile,setProfile]=useState(null); const [authMode,setAuthMode]=useState('login');
   const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [username,setUsername]=useState(''); const [message,setMessage]=useState('');
   const [date,setDate]=useState(new Date()); const [workDays,setWorkDays]=useState([]); const [users,setUsers]=useState([]);
-  const [editing,setEditing]=useState(null); const [form,setForm]=useState({date:iso(new Date()),address:'',lat:null,lng:null,people:1,notes:''});
+  const [editing,setEditing]=useState(null); const [selectedDay,setSelectedDay]=useState(null); const [form,setForm]=useState({date:iso(new Date()),address:'',lat:null,lng:null,people:1,notes:''});
   const [suggestions,setSuggestions]=useState([]); const [loading,setLoading]=useState(false);
 
   useEffect(()=>{ supabase.auth.getSession().then(({data})=>setSession(data.session)); const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s)); return ()=>subscription.unsubscribe(); },[]);
@@ -51,9 +51,30 @@ function App(){
   const totals=useMemo(()=>{const sites={}; let people=0; monthly.forEach(w=>{people+=Number(w.people||0); const k=w.address||'Indirizzo non indicato'; sites[k]=(sites[k]||0)+1;}); return {days:monthly.length, people, sites};},[monthly]);
 
   function prevMonth(){ setDate(new Date(currentYear,currentMonth-1,1)); } function nextMonth(){ setDate(new Date(currentYear,currentMonth+1,1)); }
-  function openDay(d){ const key=iso(d); const old=byDate[key]; setEditing(old||null); setForm(old?{date:old.date,address:old.address||'',lat:old.lat,lng:old.lng,people:old.people||1,notes:old.notes||''}:{date:key,address:'',lat:null,lng:null,people:1,notes:''}); }
-  async function saveDay(e){ e.preventDefault(); setLoading(true); const payload={...form,user_id:session.user.id,people:Number(form.people||1)}; let res; if(editing) res=await supabase.from('work_days').update(payload).eq('id',editing.id); else res=await supabase.from('work_days').insert(payload); setLoading(false); if(res.error) setMessage(res.error.message); else {setEditing(null); await loadWorkDays();} }
-  async function deleteDay(){ if(!editing) return; if(!confirm('Eliminare questa giornata?')) return; await supabase.from('work_days').delete().eq('id',editing.id); setEditing(null); loadWorkDays(); }
+  function openDay(d){
+    const key=iso(d);
+    const old=byDate[key];
+    setSuggestions([]);
+    if(old){
+      setSelectedDay(old);
+      setEditing(null);
+    } else {
+      setSelectedDay({date:key, empty:true});
+      setEditing({new:true});
+      setForm({date:key,address:'',lat:null,lng:null,people:1,notes:''});
+    }
+  }
+  function editSelectedDay(){
+    const old=selectedDay && !selectedDay.empty ? selectedDay : null;
+    setEditing(old || {new:true});
+    setForm(old?{date:old.date,address:old.address||'',lat:old.lat,lng:old.lng,people:old.people||1,notes:old.notes||''}:{date:selectedDay?.date || iso(new Date()),address:'',lat:null,lng:null,people:1,notes:''});
+  }
+  function newDayFromSelected(){
+    setEditing({new:true});
+    setForm({date:selectedDay?.date || iso(new Date()),address:'',lat:null,lng:null,people:1,notes:''});
+  }
+  async function saveDay(e){ e.preventDefault(); setLoading(true); const payload={...form,user_id:session.user.id,people:Number(form.people||1)}; let res; if(editing) res=await supabase.from('work_days').update(payload).eq('id',editing.id); else res=await supabase.from('work_days').insert(payload); setLoading(false); if(res.error) setMessage(res.error.message); else {setEditing(null); setSelectedDay(null); await loadWorkDays();} }
+  async function deleteDay(){ if(!editing) return; if(!confirm('Eliminare questa giornata?')) return; await supabase.from('work_days').delete().eq('id',editing.id); setEditing(null); setSelectedDay(null); loadWorkDays(); }
   async function queryAddress(q){ setForm(f=>({...f,address:q})); if(q.length<4){setSuggestions([]);return;} const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=it&q=${encodeURIComponent(q)}`); const data=await r.json(); setSuggestions(data); }
   function pickAddress(s){ setForm(f=>({...f,address:s.display_name,lat:Number(s.lat),lng:Number(s.lon)})); setSuggestions([]); }
   async function setApproval(u,approved){ await supabase.from('profiles').update({approved}).eq('id',u.id); loadUsers(); }
@@ -81,7 +102,12 @@ function App(){
     <main className="grid2">
       <section className="calendar"><div className="week">{DAYS.map(d=><b key={d}>{d}</b>)}</div><div className="days">{monthDays(currentYear,currentMonth).map((d,i)=>{
         if(!d) return <div key={i} className="empty"/>; const key=iso(d); const dow=d.getDay(); const w=byDate[key]; return <button key={key} onClick={()=>openDay(d)} className={`day ${dow===6?'sabato':''} ${dow===0?'domenica':''} ${h[key]?'holiday':''} ${w?'worked':''}`}><span>{d.getDate()}</span>{h[key]&&<small>{h[key]}</small>}{w&&<em>{w.address?.slice(0,26)||'Lavoro'}</em>}</button>})}</div></section>
-      <section className="panel"><h2>{editing?'Modifica giornata':'Inserisci giornata'}</h2><form onSubmit={saveDay} className="form"><label>Data<input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label>Indirizzo<input value={form.address} onChange={e=>queryAddress(e.target.value)} placeholder="Scrivi indirizzo o cantiere"/></label>{suggestions.length>0&&<div className="suggestions">{suggestions.map(s=><button type="button" key={s.place_id} onClick={()=>pickAddress(s)}>{s.display_name}</button>)}</div>}<label>Persone<input type="number" min="1" value={form.people} onChange={e=>setForm({...form,people:e.target.value})}/></label><label>Note<textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></label><button disabled={loading}>{loading?'Salvataggio...':'Salva giornata'}</button>{editing&&<button type="button" className="danger" onClick={deleteDay}>Elimina</button>}</form></section>
+      <section className="panel">
+        {!selectedDay && !editing && <div className="day-help"><h2>Seleziona un giorno</h2><p>Tocca una casella del calendario per aggiungere una giornata o vedere dove hai lavorato.</p></div>}
+        {selectedDay && !editing && !selectedDay.empty && <div className="day-summary"><h2>Giornata del {selectedDay.date}</h2><div className="summary-line"><span>Indirizzo / cantiere</span><b>{selectedDay.address || 'Non indicato'}</b></div><div className="summary-line"><span>Persone</span><b>{selectedDay.people || 1}</b></div>{selectedDay.notes && <div className="summary-line"><span>Note</span><b>{selectedDay.notes}</b></div>}{selectedDay.lat && selectedDay.lng && <a className="map-link" href={`https://www.google.com/maps?q=${selectedDay.lat},${selectedDay.lng}`} target="_blank" rel="noreferrer">Apri posizione su Google Maps</a>}<button onClick={editSelectedDay}>Modifica giornata</button></div>}
+        {selectedDay && !editing && selectedDay.empty && <div className="day-summary"><h2>{selectedDay.date}</h2><p>Nessuna giornata inserita per questa data.</p><button onClick={newDayFromSelected}>Aggiungi giornata</button></div>}
+        {editing && <><h2>{editing?.id?'Modifica giornata':'Nuova giornata'}</h2><form onSubmit={saveDay} className="form"><label>Data<input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label>Indirizzo<input value={form.address} onChange={e=>queryAddress(e.target.value)} placeholder="Scrivi indirizzo o cantiere"/></label>{suggestions.length>0&&<div className="suggestions">{suggestions.map(s=><button type="button" key={s.place_id} onClick={()=>pickAddress(s)}>{s.display_name}</button>)}</div>}<label>Persone<input type="number" min="1" value={form.people} onChange={e=>setForm({...form,people:e.target.value})}/></label><label>Note<textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></label><button disabled={loading}>{loading?'Salvataggio...':'Salva giornata'}</button>{editing?.id&&<button type="button" className="danger" onClick={deleteDay}>Elimina</button>}<button type="button" className="secondary" onClick={()=>{setEditing(null); setSuggestions([]);}}>Annulla</button></form></>}
+      </section>
     </main>
     <section className="report"><h2>Resoconto mensile</h2><div className="cards"><div><b>{totals.days}</b><span>giornate</span></div><div><b>{totals.people}</b><span>persone/giornate</span></div><div><b>{Object.keys(totals.sites).length}</b><span>cantieri</span></div></div><ul>{Object.entries(totals.sites).map(([s,n])=><li key={s}>{s} <b>{n}</b></li>)}</ul></section>
     {profile.role==='admin'&&<Admin users={users} setApproval={setApproval} setRole={setRole} removeUser={removeUser}/>} 
