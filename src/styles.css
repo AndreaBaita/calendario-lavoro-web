@@ -3,3 +3,5 @@
 
 .day.selected{outline:3px solid #38bdf8;outline-offset:2px;box-shadow:0 0 0 4px rgba(14,165,233,.22), inset 0 0 0 2px rgba(56,189,248,.65)}
 .day.selected span{color:#7dd3fc}
+select{width:100%;background:#0f172a;color:#e5e7eb;border:1px solid #475569;border-radius:14px;padding:12px}.day.rested{border-color:#f59e0b;background:linear-gradient(180deg,#1f2937,#2b2111)}.badge{align-self:flex-start;background:#0ea5e9;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px}.entry-card{display:grid;gap:10px;background:#0b1220;border:1px solid #334155;border-radius:18px;padding:12px}.entry-card.rest-entry{border-color:#f59e0b;background:#1c1609}.entry-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.entry-head span{color:#93c5fd;font-weight:800}.actions{display:flex;gap:8px;flex-wrap:wrap}.add-actions{margin-top:4px}.day.worked.rested{border-color:#facc15}
+@media(max-width:850px){.actions button{flex:1}.entry-head{align-items:flex-start;flex-direction:column}.badge{font-size:10px}.day em{display:block;font-size:10px;line-height:1.15}.day small{font-size:10px;line-height:1.15}}
