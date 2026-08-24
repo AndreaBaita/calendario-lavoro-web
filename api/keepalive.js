@@ -6,7 +6,10 @@ export default async function handler(_request, response) {
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-    return response.status(500).json({ ok: false });
+    return response.status(500).json({
+      ok: false,
+      error: 'Supabase server environment variables are not configured',
+    });
   }
 
   try {
@@ -26,6 +29,9 @@ export default async function handler(_request, response) {
     return response.status(200).json({ ok: true });
   } catch (error) {
     console.error('Supabase keep-alive failed:', error);
-    return response.status(500).json({ ok: false });
+    return response.status(500).json({
+      ok: false,
+      error: 'Supabase keep-alive query failed',
+    });
   }
 }
